@@ -34,16 +34,7 @@ dagger.#Plan & {
 					tag: "app:build-py3.11-rc"
 				},
 				bash.#Run & {
-					script: contents: """
-						python3 -m venv /app/.venv
-						"""
-				},
-				bash.#Run & {
 					mounts: {
-						project: {
-							dest:     "/app/src"
-							contents: _base.output
-						}
 						wheels: {
 							dest:     "/app/build"
 							contents: buildWheels.output
@@ -53,13 +44,6 @@ dagger.#Plan & {
 						/app/.venv/bin/pip install -r /app/build/requirements.txt -f /app/build/wheels
 						"""
 				},
-            	docker.#Set & {
-					config: cmd: ["/app/.venv/bin/python3", "/app/src/app.py"]
-            	},
-				docker.#Copy & {
-					contents: _base.output
-					dest: "/app/src"
-				}
 			]
 		}
 		saveLocal: cli.#Load & {
