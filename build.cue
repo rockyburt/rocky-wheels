@@ -39,7 +39,6 @@ import (
 			poetry export --dev --without-hashes --format=requirements.txt > /requirements.txt
 			pip wheel -w /wheels -r /requirements.txt
 			"""
-		export: directories: "/wheels": _
 	}
-	output: _run.export.directories."/wheels"
+	output: _run.output
 }
