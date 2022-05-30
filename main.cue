@@ -14,12 +14,12 @@ dagger.#Plan & {
 		path: "."
 		exclude: ["cue.mod", "README.md", "*.cue"]
 	}
+	_pyVersion: "3.11-rc"
 	actions: {
 		makeBuilder: #PythonImageBuild & {
 			source:    _base.output
-			pyVersion: "3.11-rc"
+			pyVersion: _pyVersion
 			dockerfile: path: "Dockerfile.build"
-			tag: "builder:build-py3.11-rc"
 		}
 		buildWheels: #BuildWheels & {
 			input:  makeBuilder.output
@@ -29,9 +29,8 @@ dagger.#Plan & {
 			steps: [
 				#PythonImageBuild & {
 					source:    _base.output
-					pyVersion: "3.11-rc"
+					pyVersion: _pyVersion
 					dockerfile: path: "Dockerfile.app"
-					tag: "app:build-py3.11-rc"
 				},
 				bash.#Run & {
 					mounts: {
@@ -50,7 +49,7 @@ dagger.#Plan & {
 			// save to local docker environment as a debugging artifact
 			image: makeApp.output
 			host: client.network."unix:///var/run/docker.sock".connect
-			tag: "pythonapp:1"
+			tag: "pythonapp:py" + _pyVersion + "-1"
 		}
 
 		publishApp: docker.#Push & {

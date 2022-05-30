@@ -9,7 +9,6 @@ import (
 #PythonImageBuild: {
 	source:     dagger.#FS
 	pyVersion:  string
-	tag:        string
 	dockerfile: *{
 		path: string | *"Dockerfile"
 	} | {
