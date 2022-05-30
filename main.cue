@@ -8,7 +8,7 @@ import (
 dagger.#Plan & {
 	_base: core.#Source & {
 		path: "."
-		exclude: ["cue.mod"]
+		exclude: ["cue.mod", "README.md", "*.cue"]
 	}
 	actions: {
 		makeBuilder: #PythonImageBuild & {
