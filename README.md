@@ -1,5 +1,5 @@
 # rocky-wheels
 
 ```
-dagger do buildWheels --log-format plain
+dagger do publishApp --log-format plain
 ```
