@@ -10,6 +10,7 @@ import (
 
 dagger.#Plan & {
 	client: network: "unix:///var/run/docker.sock": connect: dagger.#Socket
+	client: filesystem: "./.build": write: contents: actions.buildWheels.output
 	_base: core.#Source & {
 		path: "."
 		exclude: ["cue.mod", "README.md", "*.cue"]
