@@ -36,9 +36,13 @@ import (
 		always:  true
 		workdir: "/app/src"
 		script: contents: """
-			poetry export --dev --without-hashes --format=requirements.txt > /requirements.txt
-			pip wheel -w /wheels -r /requirements.txt
+			mkdir -p /whl
+			poetry export --dev --without-hashes --format=requirements.txt > /whl/requirements.txt
+			pip wheel -w /whl/wheels -r /whl/requirements.txt
 			"""
+		export: {
+			directories: "/whl": {}
+		}
 	}
-	output: _run.output
+	output: _run.export.directories."/whl"
 }
