@@ -45,6 +45,15 @@ dagger.#Plan & {
 				},
 			]
 		}
+
+		runTests: bash.#Run & {
+			input: makeApp.output
+			always: true
+			script: contents: """
+				python -m unittest discover -s /app/src/tests
+				"""
+		}
+		
 		saveLocal: cli.#Load & {
 			// save to local docker environment as a debugging artifact
 			image: makeApp.output
