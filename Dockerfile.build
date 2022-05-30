@@ -13,6 +13,6 @@ RUN \
     libpq-dev \
     # Poetry deps
     libffi-dev \
-	&& \
+    && \
     # update PIP
-    /usr/local/bin/python -m pip install --upgrade pip poetry
+    /usr/local/bin/python -m pip install --upgrade pip

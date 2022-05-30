@@ -5,9 +5,11 @@ import (
 	"dagger.io/dagger/core"
 	"universe.dagger.io/bash"
 	"universe.dagger.io/docker"
+	"universe.dagger.io/docker/cli"
 )
 
 dagger.#Plan & {
+	client: network: "unix:///var/run/docker.sock": connect: dagger.#Socket
 	_base: core.#Source & {
 		path: "."
 		exclude: ["cue.mod", "README.md", "*.cue"]
@@ -32,9 +34,8 @@ dagger.#Plan & {
 					tag: "app:build-py3.11-rc"
 				},
 				bash.#Run & {
-					always: true
 					script: contents: """
-						python3 -m venv /app
+						python3 -m venv /app/.venv
 						"""
 				},
 				bash.#Run & {
@@ -44,18 +45,30 @@ dagger.#Plan & {
 							contents: _base.output
 						}
 						wheels: {
-							dest:     "/whl"
+							dest:     "/app/build"
 							contents: buildWheels.output
 						}
 					}
-					always: true
 					script: contents: """
-						/app/bin/python -m pip install --upgrade pip
-						/app/bin/pip install -r /whl/requirements.txt -f /whl/wheels
+						/app/.venv/bin/pip install -r /app/build/requirements.txt -f /app/build/wheels
 						"""
 				},
+            	docker.#Set & {
+					config: cmd: ["/app/.venv/bin/python3", "/app/src/app.py"]
+            	},
+				docker.#Copy & {
+					contents: _base.output
+					dest: "/app/src"
+				}
 			]
 		}
+		saveLocal: cli.#Load & {
+			// save to local docker environment as a debugging artifact
+			image: makeApp.output
+			host: client.network."unix:///var/run/docker.sock".connect
+			tag: "pythonapp:1"
+		}
+
 		publishApp: docker.#Push & {
 			image: makeApp.output
 			dest:  "localhost:5042/pythonapp:1"

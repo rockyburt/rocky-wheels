@@ -33,16 +33,18 @@ import (
 			dest:     "/app/src"
 			contents: source
 		}
-		always:  true
 		workdir: "/app/src"
 		script: contents: """
-			mkdir -p /whl
-			poetry export --dev --without-hashes --format=requirements.txt > /whl/requirements.txt
-			pip wheel -w /whl/wheels -r /whl/requirements.txt
+			set -e
+			mkdir -p /app/build/wheels
+			pip wheel -w /app/build/wheels poetry wheel setuptools
+			pip install -f /app/build/wheels poetry wheel setuptools
+			poetry export --dev --without-hashes --format=requirements.txt > /app/build/requirements.txt
+			pip wheel -w /app/build/wheels -r /app/build/requirements.txt
 			"""
 		export: {
-			directories: "/whl": {}
+			directories: "/app/build": _
 		}
 	}
-	output: _run.export.directories."/whl"
+	output: _run.export.directories."/app/build"
 }
