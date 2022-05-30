@@ -28,6 +28,7 @@ import (
 	source: dagger.#FS
 
 	_buildDir: "/app/build"
+	_wheelsDir: "\(_buildDir)/wheels"
 	_reqFile: "\(_buildDir)/requirements.txt"
 
 	_wheels: docker.#Build & {
@@ -36,9 +37,9 @@ import (
 				"input": input
 				script: contents: """
 					set -e
-					mkdir -p \(_buildDir)/wheels
-					pip wheel -w \(_buildDir)/wheels poetry wheel setuptools
-					pip install -f \(_buildDir)/wheels poetry wheel setuptools
+					mkdir -p \(_wheelsDir)
+					pip wheel -w \(_wheelsDir) poetry wheel setuptools
+					pip install -f \(_wheelsDir) poetry wheel setuptools
 					"""
 			},
 			bash.#Run & {
@@ -51,7 +52,7 @@ import (
 			},
 			bash.#Run & {
 				workdir: "/app/src"
-				script: contents: "pip wheel -w \(_buildDir)/wheels -r \(_reqFile)"
+				script: contents: "pip wheel -w \(_wheelsDir) -r \(_reqFile)"
 			}
 		]
 	}
