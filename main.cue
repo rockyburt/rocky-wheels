@@ -13,7 +13,7 @@ dagger.#Plan & {
 	client: filesystem: "./.build": write: contents: actions.buildWheels.output
 	_base: core.#Source & {
 		path: "."
-		exclude: ["cue.mod", "README.md", "*.cue"]
+		exclude: ["cue.mod", "README.md", "*.cue", ".build"]
 	}
 	_pyVersion: "3.11-rc"
 	actions: {
@@ -41,7 +41,8 @@ dagger.#Plan & {
 						}
 					}
 					script: contents: """
-						/app/.venv/bin/pip install -r /app/build/requirements.txt -f /app/build/wheels
+						/app/.venv/bin/pip install --no-index --upgrade -f /app/build/wheels pip
+						/app/.venv/bin/pip install --no-index -r /app/build/requirements.txt -f /app/build/wheels
 						"""
 				},
 			]
