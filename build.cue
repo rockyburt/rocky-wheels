@@ -26,24 +26,42 @@ import (
 #BuildWheels: {
 	input:  docker.#Image
 	source: dagger.#FS
-	_run:   bash.#Run & {
-		"input": input
-		mounts: project: {
-			dest:     "/app/src"
-			contents: source
-		}
-		workdir: "/app/src"
-		script: contents: """
-			set -e
-			mkdir -p /app/build/wheels
-			pip wheel -w /app/build/wheels poetry wheel setuptools
-			pip install -f /app/build/wheels poetry wheel setuptools
-			poetry export --dev --without-hashes --format=requirements.txt > /app/build/requirements.txt
-			pip wheel -w /app/build/wheels -r /app/build/requirements.txt
-			"""
-		export: {
-			directories: "/app/build": _
-		}
+
+	_buildDir: "/app/build"
+	_reqFile: "\(_buildDir)/requirements.txt"
+
+	_wheels: docker.#Build & {
+		steps: [
+			bash.#Run & {
+				"input": input
+				script: contents: """
+					set -e
+					mkdir -p \(_buildDir)/wheels
+					pip wheel -w \(_buildDir)/wheels poetry wheel setuptools
+					pip install -f \(_buildDir)/wheels poetry wheel setuptools
+					"""
+			},
+			bash.#Run & {
+				mounts: src: {
+					dest:     "/app/src"
+					contents: source
+				}
+				workdir: "/app/src"
+				script: contents: "poetry export --dev --without-hashes --format=requirements.txt > \(_reqFile)"
+			},
+			bash.#Run & {
+				workdir: "/app/src"
+				script: contents: "pip wheel -w \(_buildDir)/wheels -r \(_reqFile)"
+			}
+		]
 	}
-	output: _run.export.directories."/app/build"
+
+	_export: docker.#Run & {
+		input: _wheels.output
+		export: {
+			directories: "\(_buildDir)": _
+		}					
+	}
+
+	output: _export.export.directories["\(_buildDir)"]
 }
