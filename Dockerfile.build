@@ -1,0 +1,18 @@
+ARG PYTHON_EXACT_VERSION
+FROM public.ecr.aws/docker/library/python:${PYTHON_EXACT_VERSION}-slim-bullseye
+
+RUN \
+    apt-get update && \
+    # install apt packages
+    apt-get install --no-install-recommends -y \
+    build-essential \
+    # pillow/pil deps
+    libtiff-dev libjpeg62-turbo-dev zlib1g-dev libfreetype6-dev liblcms2-dev libwebp-dev \
+    libxml2-dev libxslt-dev \
+    # psycopg2 deps
+    libpq-dev \
+    # Poetry deps
+    libffi-dev \
+    && \
+    # update PIP
+    /usr/local/bin/python -m pip install --upgrade pip poetry
