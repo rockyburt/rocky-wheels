@@ -38,9 +38,9 @@ dagger.#Plan & {
 				}
 				always: true
 				script: contents: """
-					/app/bin/pip install quart
+					/app/bin/python -m pip install --upgrade pip
+					/app/bin/pip install -r requirements.txt -f /wheels
 					/app/bin/python /app/src/app.py
-					ls -alr /app/*
 					"""
 			}
 		}
