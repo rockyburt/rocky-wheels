@@ -24,13 +24,23 @@ import (
 	output: _build.output
 }
 
-#BuildWheels: {
+#PythonWheelsBuildConfig: {
+	buildDir: string
+	wheelsDir: string
+	reqFile: string
+}
+
+#PythonWheelsBuild: {
 	input:  docker.#Image
 	source: dagger.#FS
 
 	_buildDir: "/app/build"
-	_wheelsDir: "\(_buildDir)/wheels"
-	_reqFile: "\(_buildDir)/requirements.txt"
+	
+	config: #PythonWheelsBuildConfig & {
+		buildDir: _buildDir
+		wheelsDir: "\(_buildDir)/wheels"
+		reqFile: "\(_buildDir)/requirements.txt"
+	}
 
 	_wheels: docker.#Build & {
 		steps: [
@@ -38,9 +48,9 @@ import (
 				"input": input
 				script: contents: """
 					set -e
-					mkdir -p \(_wheelsDir)
-					pip wheel -w \(_wheelsDir) poetry wheel setuptools
-					pip install -f \(_wheelsDir) poetry wheel setuptools
+					mkdir -p \(config.wheelsDir)
+					pip wheel -w \(config.wheelsDir) poetry wheel setuptools
+					pip install -f \(config.wheelsDir) poetry wheel setuptools
 					"""
 			},
 			bash.#Run & {
@@ -49,11 +59,11 @@ import (
 					contents: source
 				}
 				workdir: "/app/src"
-				script: contents: "poetry export --dev --without-hashes --format=requirements.txt > \(_reqFile)"
+				script: contents: "poetry export --dev --without-hashes --format=requirements.txt > \(config.reqFile)"
 			},
 			bash.#Run & {
 				workdir: "/app/src"
-				script: contents: "pip wheel -w \(_wheelsDir) -r \(_reqFile)"
+				script: contents: "pip wheel -w \(config.wheelsDir) -r \(config.reqFile)"
 			}
 		]
 	}
@@ -62,9 +72,45 @@ import (
 		contents: dagger.#FS & _subdir.output
 		_subdir: core.#Subdir & {
 			input: _wheels.output.rootfs
-			"path": _buildDir
+			"path": config.buildDir
 		}
 	}
 
 	output: _export.contents
+}
+
+#PythonAppInstall: {
+	pyVersion:  string
+	dockerfile: *{
+		path: string | *"Dockerfile"
+	} | {
+		contents: string
+	}
+	config: #PythonWheelsBuildConfig
+	input: dagger.#FS
+	source: dagger.#FS
+
+	app: docker.#Build & {
+		steps: [
+			#PythonImageBuild & {
+				"source":     source
+				"pyVersion":  pyVersion
+				"dockerfile": dockerfile
+			},
+			bash.#Run & {
+				mounts: {
+					"buildDir": {
+						dest:     config.buildDir
+						contents: input
+					}
+				}
+				script: contents: """
+					/app/.venv/bin/pip install --no-index --upgrade -f \(config.wheelsDir) pip
+					/app/.venv/bin/pip install --no-index -r \(config.reqFile) -f \(config.wheelsDir)
+					"""
+			},
+		]
+	}
+
+	output: app.output
 }

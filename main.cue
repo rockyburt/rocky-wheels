@@ -29,32 +29,18 @@ dagger.#Plan & {
 		}
 		
 		// Build all dependent Python wheels
-		buildWheels: #BuildWheels & {
-			input:  makeBuilder.output
+		buildWheels: #PythonWheelsBuild & {
 			source: _base.output
+			input:  makeBuilder.output
 		}
 		
 		// Create a container image with source code and dependencies installed
-		makeApp: docker.#Build & {
-			steps: [
-				#PythonImageBuild & {
-					source:    _base.output
-					pyVersion: _pyVersion
-					dockerfile: path: "Dockerfile.app"
-				},
-				bash.#Run & {
-					mounts: {
-						wheels: {
-							dest:     buildWheels._buildDir
-							contents: buildWheels.output
-						}
-					}
-					script: contents: """
-						/app/.venv/bin/pip install --no-index --upgrade -f \(buildWheels._wheelsDir) pip
-						/app/.venv/bin/pip install --no-index -r \(buildWheels._reqFile) -f \(buildWheels._wheelsDir)
-						"""
-				},
-			]
+		makeApp: #PythonAppInstall & {
+			source: _base.output
+			pyVersion: makeBuilder.pyVersion
+			dockerfile: path: "Dockerfile.app"
+			input: buildWheels.output
+			config: buildWheels.config
 		}
 
 		// Run all Python-based unit tests
