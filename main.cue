@@ -18,14 +18,14 @@ dagger.#Plan & {
 	}
 	_pyVersion: "3.11-rc"
 	_revision: "1"
-	_tag: "pythonapp:py \(_pyVersion)-\(_revision)"
+	_tag: "pythonapp:py\(_pyVersion)-\(_revision)"
 
 	actions: {
 		// Build the builder image
 		makeBuilder: #PythonImageBuild & {
 			source:    _base.output
-			pyVersion: _pyVersion
 			dockerfile: path: "Dockerfile.build"
+			buildArg: "PYTHON_EXACT_VERSION": _pyVersion
 		}
 		
 		// Build all dependent Python wheels
@@ -36,18 +36,23 @@ dagger.#Plan & {
 		
 		// Create a container image with source code and dependencies installed
 		makeApp: #PythonAppInstall & {
+			_virtualenv: "\(buildWheels.config.rootDir)/.venv"
 			source: _base.output
-			pyVersion: makeBuilder.pyVersion
+			buildArg: {
+				"PYTHON_EXACT_VERSION": makeBuilder.buildArg.PYTHON_EXACT_VERSION
+				"VENV": _virtualenv
+			}
 			dockerfile: path: "Dockerfile.app"
 			input: buildWheels.output
 			config: buildWheels.config
+			pip: "\(_virtualenv)/bin/pip"
 		}
 
 		// Run all Python-based unit tests
 		runTests: bash.#Run & {
 			input: makeApp.output
 			always: true
-			script: contents: "python -m unittest discover -s /app/src/tests"
+			script: contents: "python -m unittest discover -s \(buildWheels.config.rootDir)/src/tests"
 		}
 		
 		// export/save the built container image into the local docker runtime
@@ -61,7 +66,7 @@ dagger.#Plan & {
 		// publish the built container image to an image registry
 		publishApp: docker.#Push & {
 			image: makeApp.output
-			dest:  "localhost:5042/pythonapp:1"
+			dest:  "localhost:5042/\(_tag)"
 		}
 	}
 }

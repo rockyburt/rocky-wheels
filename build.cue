@@ -9,7 +9,7 @@ import (
 
 #PythonImageBuild: {
 	source:     dagger.#FS
-	pyVersion:  string
+	buildArg: [string]: string
 	dockerfile: *{
 		path: string | *"Dockerfile"
 	} | {
@@ -19,12 +19,13 @@ import (
 	_build: docker.#Dockerfile & {
 		"source":     source
 		"dockerfile": dockerfile
-		buildArg: "PYTHON_EXACT_VERSION": pyVersion
+		"buildArg":   buildArg
 	}
 	output: _build.output
 }
 
 #PythonWheelsBuildConfig: {
+	rootDir: string
 	buildDir: string
 	wheelsDir: string
 	reqFile: string
@@ -34,9 +35,11 @@ import (
 	input:  docker.#Image
 	source: dagger.#FS
 
-	_buildDir: "/app/build"
+	_rootDir: "/app"
+	_buildDir: "\(_rootDir)/build"
 	
 	config: #PythonWheelsBuildConfig & {
+		rootDir: _rootDir
 		buildDir: _buildDir
 		wheelsDir: "\(_buildDir)/wheels"
 		reqFile: "\(_buildDir)/requirements.txt"
@@ -55,14 +58,14 @@ import (
 			},
 			bash.#Run & {
 				mounts: src: {
-					dest:     "/app/src"
+					dest:     "\(config.rootDir)/src"
 					contents: source
 				}
-				workdir: "/app/src"
+				workdir: "\(config.rootDir)/src"
 				script: contents: "poetry export --dev --without-hashes --format=requirements.txt > \(config.reqFile)"
 			},
 			bash.#Run & {
-				workdir: "/app/src"
+				workdir: "\(config.rootDir)/src"
 				script: contents: "pip wheel -w \(config.wheelsDir) -r \(config.reqFile)"
 			}
 		]
@@ -80,7 +83,6 @@ import (
 }
 
 #PythonAppInstall: {
-	pyVersion:  string
 	dockerfile: *{
 		path: string | *"Dockerfile"
 	} | {
@@ -89,13 +91,15 @@ import (
 	config: #PythonWheelsBuildConfig
 	input: dagger.#FS
 	source: dagger.#FS
+	buildArg: [string]: string
+	pip: string
 
 	app: docker.#Build & {
 		steps: [
 			#PythonImageBuild & {
 				"source":     source
-				"pyVersion":  pyVersion
 				"dockerfile": dockerfile
+				"buildArg":   buildArg
 			},
 			bash.#Run & {
 				mounts: {
@@ -105,8 +109,8 @@ import (
 					}
 				}
 				script: contents: """
-					/app/.venv/bin/pip install --no-index --upgrade -f \(config.wheelsDir) pip
-					/app/.venv/bin/pip install --no-index -r \(config.reqFile) -f \(config.wheelsDir)
+					\(pip) install --no-index --upgrade -f \(config.wheelsDir) pip
+					\(pip) install --no-index -r \(config.reqFile) -f \(config.wheelsDir)
 					"""
 			},
 		]
