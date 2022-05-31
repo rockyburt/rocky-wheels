@@ -2,6 +2,7 @@ package rentalsapi
 
 import (
 	"dagger.io/dagger"
+	"dagger.io/dagger/core"
 	"universe.dagger.io/docker"
 	"universe.dagger.io/bash"
 )
@@ -57,12 +58,13 @@ import (
 		]
 	}
 
-	_export: docker.#Run & {
-		input: _wheels.output
-		export: {
-			directories: "\(_buildDir)": _
-		}					
+	_export: {
+		contents: dagger.#FS & _subdir.output
+		_subdir: core.#Subdir & {
+			input: _wheels.output.rootfs
+			"path": _buildDir
+		}
 	}
 
-	output: _export.export.directories["\(_buildDir)"]
+	output: _export.contents
 }
