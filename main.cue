@@ -10,7 +10,7 @@ import (
 
 dagger.#Plan & {
 	client: network: "unix:///var/run/docker.sock": connect: dagger.#Socket
-	client: filesystem: "./.build": write: contents: actions._buildImage.export.build
+	client: filesystem: "./.build": write: contents: actions.exportBuildArtifacts.contents
 	_base: core.#Source & {
 		path: "."
 		exclude: ["cue.mod", "README.md", "*.cue", ".build"]
@@ -22,21 +22,23 @@ dagger.#Plan & {
 	_tagSuffix: "\(_project):\(_version)"
 	_tag: "\(_imageRepo)\(_tagSuffix)"
 
+	_app: #PythonApp & {
+		path: "/\(_project)"
+		buildPath: "/build"
+	}
+
 	actions: {
 		_baseImage: #PythonImage & {}
 
 		// setup the baseImage with a Python virtualenv
 		_createVirtualenv: #PythonCreateVirtualenv & {
-			app: #PythonApp & {
-				path: "/\(_project)"
-				buildPath: "/build"
-			}
+			app: _app
 			source: _baseImage.output
 		}
 
 		// install Poetry-derived requirements-based dependencies
 		_buildImage: #PythonInstallPoetryRequirements & {
-			app: _createVirtualenv.app
+			app: _app
 			source: _createVirtualenv.output
 			project: _base.output
 		}
@@ -44,16 +46,16 @@ dagger.#Plan & {
 		buildWheel: bash.#Run & {
 			input: _buildImage.output
 			mounts: projectMount: {
-				dest:     _buildImage.app._projectDir
+				dest:     _app._projectDir
 				contents: _base.output
 			}
-			workdir: "\(_buildImage.app._projectDir)"
+			workdir: "\(_app._projectDir)"
 			script: contents: """
 				set -e
 				rm -Rf dist
 				poetry build
-				cp dist/*.whl \(_buildImage.app._wheelsDir)/
-				\(_buildImage.app.venvDir)/bin/python -m pip install dist/*.whl
+				cp dist/*.whl \(_app._wheelsDir)/
+				\(_app.venvDir)/bin/python -m pip install dist/*.whl
 			"""
 		}
 
@@ -61,7 +63,15 @@ dagger.#Plan & {
 			contents: dagger.#FS & _subdir.output
 			_subdir: core.#Subdir & {
 				input: buildWheel.output.rootfs
-				"path": _buildImage.app.path
+				"path": _app.buildPath
+			}
+		}
+
+		exportBuildArtifacts: {
+			contents: dagger.#FS & _subdir.output
+			_subdir: core.#Subdir & {
+				input: buildWheel.output.rootfs
+				"path": _app.buildPath
 			}
 		}
 
@@ -73,14 +83,14 @@ dagger.#Plan & {
 				},
 				docker.#Copy & {
 					contents: _appExport.contents
-					dest: _buildImage.app.path
+					dest: _app.path
 				},
 				docker.#Copy & {
 					contents: _base.output
-					dest: "\(_buildImage.app.path)/src"
+					dest: "\(_app.path)/src"
 				},
 				docker.#Set & {
-                	config: cmd: ["\(_buildImage.app.venvDir)/bin/python", "-m", "pythonapp.app"]
+                	config: cmd: ["\(_app.venvDir)/bin/python", "-m", "pythonapp.app"]
             	},				
 			]
 		}
