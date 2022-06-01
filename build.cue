@@ -36,6 +36,42 @@ import (
 	_wheelsDir:  "\(buildPath)/wheels"
 }
 
+#PythonRun: {
+	app:        #PythonApp
+	source:     docker.#Image
+	workdir:    *"\(app.path)" | string
+	mounts:     [name=string]: core.#Mount
+
+	output:     _run.output
+
+	command?: {
+		name: *"\(app.venvDir)/bin/python" | string
+		args: [...string]
+		flags: [string]: (string | true)
+	}
+
+	_run: docker.#Run & {
+		input:     source
+		"workdir": workdir
+		"command": command
+		"mounts":  mounts
+	}
+}
+
+#PythonMakeWheel: {
+	app:     #PythonApp
+	source:  docker.#Image
+    project: dagger.#FS
+
+	_build: docker.#Build & {
+		steps: [
+			docker.#Run & {
+				input: source
+			}
+		]
+	}
+}
+
 #PythonCreateVirtualenv: {
 	app: #PythonApp
 	source: docker.#Image

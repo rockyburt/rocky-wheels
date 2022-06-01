@@ -3,6 +3,7 @@ package pythonsupport
 import (
 	"dagger.io/dagger"
 	"dagger.io/dagger/core"
+	"universe.dagger.io/bash"
 	"universe.dagger.io/docker"
 	"universe.dagger.io/docker/cli"
 )
@@ -40,6 +41,30 @@ dagger.#Plan & {
 			project: _base.output
 		}
 
+		buildWheel: bash.#Run & {
+			input: _buildImage.output
+			mounts: projectMount: {
+				dest:     _buildImage.app._projectDir
+				contents: _base.output
+			}
+			workdir: "\(_buildImage.app._projectDir)"
+			script: contents: """
+				set -e
+				rm -Rf dist
+				poetry build
+				cp dist/*.whl \(_buildImage.app._wheelsDir)/
+				\(_buildImage.app.venvDir)/bin/python -m pip install dist/*.whl
+			"""
+		}
+
+		_appExport: {
+			contents: dagger.#FS & _subdir.output
+			_subdir: core.#Subdir & {
+				input: buildWheel.output.rootfs
+				"path": _buildImage.app.path
+			}
+		}
+
 		// build final image
 		image: docker.#Build & {
 			steps: [
@@ -47,7 +72,7 @@ dagger.#Plan & {
 					source: _baseImage.baseImageTag
 				},
 				docker.#Copy & {
-					contents: _buildImage.export.app
+					contents: _appExport.contents
 					dest: _buildImage.app.path
 				},
 				docker.#Copy & {
@@ -55,7 +80,7 @@ dagger.#Plan & {
 					dest: "\(_buildImage.app.path)/src"
 				},
 				docker.#Set & {
-                	config: cmd: ["\(_buildImage.app.venvDir)/bin/python", "\(_buildImage.app.path)/src/app.py"]
+                	config: cmd: ["\(_buildImage.app.venvDir)/bin/python", "-m", "pythonapp.app"]
             	},				
 			]
 		}

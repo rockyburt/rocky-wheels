@@ -7,5 +7,8 @@ app = Quart(__name__)
 async def hello():
     return "hello"
 
+def main():
+    app.run(host="0.0.0.0")
 
-app.run(host="0.0.0.0")
+if __name__ == "__main__":
+    main()
