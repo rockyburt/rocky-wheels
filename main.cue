@@ -10,7 +10,7 @@ import (
 
 dagger.#Plan & {
 	client: network: "unix:///var/run/docker.sock": connect: dagger.#Socket
-	client: filesystem: "./.build": write: contents: actions.exportBuildArtifacts.contents
+	client: filesystem: "./.build": write: contents: actions.exportBuildArtifacts.output
 	_base: core.#Source & {
 		path: "."
 		exclude: ["cue.mod", "README.md", "*.cue", ".build"]
@@ -22,7 +22,7 @@ dagger.#Plan & {
 	_tagSuffix: "\(_project):\(_version)"
 	_tag: "\(_imageRepo)\(_tagSuffix)"
 
-	_app: pythonext.#App & {
+	_app: pythonext.#AppConfig & {
 		path: "/\(_project)"
 		buildPath: "/build"
 	}
@@ -49,8 +49,9 @@ dagger.#Plan & {
 			project: _base.output
 		}
 
-		exportBuildArtifacts: {
-			contents: installPackage.export.build
+		// export the build artifacts
+		exportBuildArtifacts: core.#Nop & {
+			input: installPackage.export.build
 		}
 
 		// build final image

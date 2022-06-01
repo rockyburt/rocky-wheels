@@ -26,9 +26,9 @@ import (
 	}
 }
 
-#App: {
-	path: string
-	buildPath: string
+#AppConfig: {
+	path:        string
+	buildPath:   string
 
 	venvDir:     "\(path)/venv"
 	projectDir:  "\(path)/project"
@@ -38,7 +38,7 @@ import (
 }
 
 #Run: {
-	app:        #App
+	app:        #AppConfig
 	source:     docker.#Image
 	workdir:    *"\(app.path)" | string
 	mounts:     [name=string]: core.#Mount
@@ -60,7 +60,7 @@ import (
 }
 
 #MakeWheel: {
-	app:     #App
+	app:     #AppConfig
 	source:  docker.#Image
     project: dagger.#FS
 
@@ -74,7 +74,7 @@ import (
 }
 
 #CreateVirtualenv: {
-	app: #App
+	app: #AppConfig
 	source: docker.#Image
 
 	_build: docker.#Build & {
@@ -94,12 +94,38 @@ import (
 	output: _build.output
 }
 
-#InstallPoetryRequirements: {
-	app: #App
-	source:     docker.#Image
-	project:    dagger.#FS
+#ExportArtifacts: {
+	app:     #AppConfig
+	source:  docker.#Image
 
-	_reqFile:    "\(app.buildPath)/requirements.txt"
+	_appExport: {
+		contents: dagger.#FS & _subdir.output
+		_subdir: core.#Subdir & {
+			input: source.rootfs
+			"path": app.path
+		}
+	}
+
+	_buildExport: {
+		contents: dagger.#FS & _subdir.output
+		_subdir: core.#Subdir & {
+			input: source.rootfs
+			"path": app.buildPath
+		}
+	}
+
+	export: {
+		build: _buildExport.contents
+		app:   _appExport.contents
+	}
+}
+
+#InstallPoetryRequirements: {
+	app:      #AppConfig
+	source:   docker.#Image
+	project:  dagger.#FS
+
+	_reqFile: "\(app.buildPath)/requirements.txt"
 	
 	_build: docker.#Build & {
 		steps: [
@@ -133,25 +159,14 @@ import (
 		]
 	}
 
-	_appExport: {
-		contents: dagger.#FS & _subdir.output
-		_subdir: core.#Subdir & {
-			input: _build.output.rootfs
-			"path": app.path
-		}
-	}
-
-	_buildExport: {
-		contents: dagger.#FS & _subdir.output
-		_subdir: core.#Subdir & {
-			input: _build.output.rootfs
-			"path": app.buildPath
-		}
+	_artifacts: #ExportArtifacts & {
+		"app": app
+		"source": source
 	}
 
 	export: {
-		build: _buildExport.contents
-		app:   _appExport.contents
+		build: _artifacts.export.build
+		app:   _artifacts.export.app
 	}
 
 	output: _build.output
@@ -183,7 +198,7 @@ import (
 // }
 
 #InstallPoetryPackage: {
-	app:     #App
+	app:     #AppConfig
 	source:  docker.#Image
 	project: dagger.#FS
 
@@ -205,24 +220,12 @@ import (
 		"""
 	}
 
-	_appExport: {
-		contents: dagger.#FS & _subdir.output
-		_subdir: core.#Subdir & {
-			input: _install.output.rootfs
-			"path": app.path
-		}
+	_artifacts: #ExportArtifacts & {
+		"app": app
+		"source": source
 	}
-
-	_buildExport: {
-		contents: dagger.#FS & _subdir.output
-		_subdir: core.#Subdir & {
-			input: _install.output.rootfs
-			"path": app.buildPath
-		}
-	}
-
 	export: {
-		build: _buildExport.contents
-		app:   _appExport.contents
+		build: _artifacts.export.build
+		app:   _artifacts.export.app
 	}
 }
