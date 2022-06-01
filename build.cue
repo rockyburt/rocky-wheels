@@ -1,4 +1,4 @@
-package rentalsapi
+package pythonsupport
 
 import (
 	"dagger.io/dagger"
@@ -7,114 +7,141 @@ import (
 	"universe.dagger.io/bash"
 )
 
-#PythonImageBuild: {
-	source:     dagger.#FS
-	buildArg: [string]: string
-	dockerfile: *{
-		path: string | *"Dockerfile"
-	} | {
-		contents: string
-	}
+#PythonImage: {
+	baseImageTag: *"public.ecr.aws/docker/library/python:3.10-slim-bullseye" | string
+	output:       _build.output
 
-	_build: docker.#Dockerfile & {
-		"source":     source
-		"dockerfile": dockerfile
-		"buildArg":   buildArg
+	_build: docker.#Build & {
+		steps: [
+			docker.#Pull & {
+				source: baseImageTag
+			},
+			docker.#Run & {
+				command: {
+					name: "pip",
+					args: ["install", "--upgrade", "pip"]
+				}
+			}
+		]
 	}
-	output: _build.output
 }
 
-#PythonWheelsBuildConfig: {
-	rootDir: string
-	buildDir: string
-	wheelsDir: string
-	reqFile: string
+#PythonApp: {
+	path: string
+	buildPath: string
+
+	venvDir:     *"\(path)/venv" | string
+	_projectDir: "\(path)/project"
+	_reqFile:    "\(buildPath)/requirements.txt"
+	_wheelsDir:  "\(buildPath)/wheels"
 }
 
-#PythonWheelsBuild: {
-	input:  docker.#Image
-	source: dagger.#FS
+#PythonCreateVirtualenv: {
+	app: #PythonApp
+	source: docker.#Image
 
-	_rootDir: "/app"
-	_buildDir: "\(_rootDir)/build"
-	
-	config: #PythonWheelsBuildConfig & {
-		rootDir: _rootDir
-		buildDir: _buildDir
-		wheelsDir: "\(_buildDir)/wheels"
-		reqFile: "\(_buildDir)/requirements.txt"
-	}
-
-	_wheels: docker.#Build & {
+	_build: docker.#Build & {
 		steps: [
 			bash.#Run & {
-				"input": input
+				input: source
 				script: contents: """
 					set -e
-					mkdir -p \(config.wheelsDir)
-					pip wheel -w \(config.wheelsDir) poetry wheel setuptools
-					pip install -f \(config.wheelsDir) poetry wheel setuptools
-					"""
-			},
-			bash.#Run & {
-				mounts: src: {
-					dest:     "\(config.rootDir)/src"
-					contents: source
-				}
-				workdir: "\(config.rootDir)/src"
-				script: contents: "poetry export --dev --without-hashes --format=requirements.txt > \(config.reqFile)"
-			},
-			bash.#Run & {
-				workdir: "\(config.rootDir)/src"
-				script: contents: "pip wheel -w \(config.wheelsDir) -r \(config.reqFile)"
+					python -m venv \(app.venvDir)
+					\(app.venvDir)/bin/pip install --upgrade pip
+					\(app.venvDir)/bin/pip install --upgrade wheel
+				"""
 			}
 		]
 	}
 
-	_export: {
-		contents: dagger.#FS & _subdir.output
-		_subdir: core.#Subdir & {
-			input: _wheels.output.rootfs
-			"path": config.buildDir
-		}
-	}
-
-	output: _export.contents
+	output: _build.output
 }
 
-#PythonAppInstall: {
-	dockerfile: *{
-		path: string | *"Dockerfile"
-	} | {
-		contents: string
-	}
-	config: #PythonWheelsBuildConfig
-	input: dagger.#FS
-	source: dagger.#FS
-	buildArg: [string]: string
-	pip: string
+#PythonInstallPoetryRequirements: {
+	app: #PythonApp
+	source:     docker.#Image
+	project:    dagger.#FS
 
-	app: docker.#Build & {
+	_reqFile:    "\(app.buildPath)/requirements.txt"
+	
+	_build: docker.#Build & {
 		steps: [
-			#PythonImageBuild & {
-				"source":     source
-				"dockerfile": dockerfile
-				"buildArg":   buildArg
+			docker.#Run & {
+				input: source
+				command: {
+					name: "/usr/local/bin/pip"
+					args: ["install", "poetry"]
+				}
 			},
 			bash.#Run & {
-				mounts: {
-					"buildDir": {
-						dest:     config.buildDir
-						contents: input
-					}
-				}
+				mounts: projectMount: {
+					dest:     app._projectDir
+					contents: project
+				}			
+				workdir: app._projectDir
 				script: contents: """
-					\(pip) install --no-index --upgrade -f \(config.wheelsDir) pip
-					\(pip) install --no-index -r \(config.reqFile) -f \(config.wheelsDir)
-					"""
+					set -e
+					mkdir -p \(app.buildPath)
+					/usr/local/bin/poetry export --format requirements.txt --dev --without-hashes > \(_reqFile)
+				"""
+			},
+			bash.#Run & {
+				script: contents: """
+					set -e
+					mkdir -p \(app._wheelsDir)
+					\(app.venvDir)/bin/pip wheel -w \(app._wheelsDir) -r \(_reqFile)
+					\(app.venvDir)/bin/pip install --no-index -f \(app._wheelsDir) -r \(_reqFile)
+				"""
 			},
 		]
 	}
 
-	output: app.output
+	_appExport: {
+		contents: dagger.#FS & _subdir.output
+		_subdir: core.#Subdir & {
+			input: _build.output.rootfs
+			"path": app.path
+		}
+	}
+
+	_buildExport: {
+		contents: dagger.#FS & _subdir.output
+		_subdir: core.#Subdir & {
+			input: _build.output.rootfs
+			"path": app.buildPath
+		}
+	}
+
+	export: {
+		build: _buildExport.contents
+		app:   _appExport.contents
+	}
+
+	output: _build.output
 }
+
+// #PythonInstallRequirements: {
+// 	virtualenv: #PythonVirtualenv
+// 	source:     dagger.#FS
+	
+// 	_reqFile: "\(virtualenv.path)/requirements.txt"
+	
+// 	_build: docker.#Build & {
+// 		steps: [
+// 			docker.#Copy & {
+// 				source: source
+// 				dest:   _reqFile
+// 			},
+// 			docker.#Run & {
+// 				input: virtualenv.output
+// 				command: {
+// 					name: "\(virtualenv.path)/bin/pip",
+// 					args: ["-r", _reqFile]
+// 				}
+// 			}
+// 		]
+// 	}
+
+// 	output: _build.output
+// }
+
