@@ -43,16 +43,23 @@ dagger.#Plan & {
 			project: _base.output
 		}
 
-		installPackage: pythonext.#InstallPoetryPackage & {
+		_makePythonDist: pythonext.#BuildPoetrySourcePackage & {
 			app: _app
 			source: _buildImage.output
 			project: _base.output
 		}
 
+		installWheel: pythonext.#InstallWheelFile & {
+			app: _app
+			source: _makePythonDist.output
+			wheel: _makePythonDist.export.dist.bdistWheel.path
+		}
+
 		// export the build artifacts
 		exportBuildArtifacts: core.#Nop & {
-			input: installPackage.export.build
+			input: _makePythonDist.export.build
 		}
+
 
 		// build final image
 		image: docker.#Build & {
@@ -61,13 +68,13 @@ dagger.#Plan & {
 					source: _baseImage.baseImageTag
 				},
 				docker.#Copy & {
-					contents: installPackage.export.app
+					contents: installWheel.export.app
 					dest: _app.path
 				},
-				docker.#Copy & {
-					contents: _base.output
-					dest: "\(_app.path)/src"
-				},
+				// docker.#Copy & {
+				// 	contents: _base.output
+				// 	dest: "\(_app.path)/src"
+				// },
 				docker.#Set & {
                 	config: cmd: ["\(_app.venvDir)/bin/python", "-m", "pythonapp.app"]
             	},				

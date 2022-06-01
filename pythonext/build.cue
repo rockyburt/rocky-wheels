@@ -5,6 +5,7 @@ import (
 	"dagger.io/dagger/core"
 	"universe.dagger.io/docker"
 	"universe.dagger.io/bash"
+	"path"
 )
 
 #Image: {
@@ -127,7 +128,7 @@ import (
 
 	_reqFile: "\(app.buildPath)/requirements.txt"
 	
-	_build: docker.#Build & {
+	_run: docker.#Build & {
 		steps: [
 			docker.#Run & {
 				input: source
@@ -161,7 +162,7 @@ import (
 
 	_artifacts: #ExportArtifacts & {
 		"app": app
-		"source": source
+		"source": _run.output
 	}
 
 	export: {
@@ -169,7 +170,7 @@ import (
 		app:   _artifacts.export.app
 	}
 
-	output: _build.output
+	output: _run.output
 }
 
 // #InstallRequirements: {
@@ -197,14 +198,14 @@ import (
 // 	output: _build.output
 // }
 
-#InstallPoetryPackage: {
+#BuildPoetrySourcePackage: {
 	app:     #AppConfig
 	source:  docker.#Image
 	project: dagger.#FS
 
-	output: _install.output
+	output: _run.output
 
-	_install: bash.#Run & {
+	_run: bash.#Run & {
 		input: source
 		mounts: projectMount: {
 			dest:     app.projectDir
@@ -216,14 +217,56 @@ import (
 			rm -Rf dist
 			poetry build
 			cp dist/*.whl \(app.wheelsDir)/
-			\(app.venvDir)/bin/python -m pip install dist/*.whl
+			mkdir -p /dist
+			cp dist/* /dist/
+			cd /
+			echo -n `ls /dist/*.whl` > /tmp/PY_BDIST_WHEEL
+			echo -n `ls /dist/*.tar.gz` > /tmp/PY_SDIST
+			# \(app.venvDir)/bin/python -m pip install dist/*.whl
 		"""
 	}
 
 	_artifacts: #ExportArtifacts & {
 		"app": app
-		"source": source
+		"source": _run.output
 	}
+	export: {
+		build: _artifacts.export.build
+		app:   _artifacts.export.app
+		dist: {
+			bdistWheel: core.#ReadFile & {
+				input: _run.output.rootfs
+				"path": _bdistWheel.contents
+			}
+			bdistWheelName: path.Base(bdistWheel.path, path.Unix)
+			_bdistWheel: core.#ReadFile & {
+				input: _run.output.rootfs
+				"path": "/tmp/PY_BDIST_WHEEL"
+			}
+		}
+	}
+}
+
+#InstallWheelFile: {
+	app:     #AppConfig
+	source:  docker.#Image
+	wheel:   string
+
+	output: _run.output
+
+	_run: docker.#Run & {
+		input: source
+		command: {
+			name: "\(app.venvDir)/bin/pip"
+			args: ["install", "--no-index", wheel]
+		}
+	}
+
+	_artifacts: #ExportArtifacts & {
+		"app": app
+		"source": _run.output
+	}
+
 	export: {
 		build: _artifacts.export.build
 		app:   _artifacts.export.app
