@@ -1,4 +1,4 @@
-package pythonsupport
+package pythonext
 
 import (
 	"dagger.io/dagger"
@@ -7,7 +7,7 @@ import (
 	"universe.dagger.io/bash"
 )
 
-#PythonImage: {
+#Image: {
 	baseImageTag: *"public.ecr.aws/docker/library/python:3.10-slim-bullseye" | string
 	output:       _build.output
 
@@ -26,18 +26,19 @@ import (
 	}
 }
 
-#PythonApp: {
+#App: {
 	path: string
 	buildPath: string
 
-	venvDir:     *"\(path)/venv" | string
-	_projectDir: "\(path)/project"
+	venvDir:     "\(path)/venv"
+	projectDir:  "\(path)/project"
+	wheelsDir:   "\(buildPath)/wheels"
+	
 	_reqFile:    "\(buildPath)/requirements.txt"
-	_wheelsDir:  "\(buildPath)/wheels"
 }
 
-#PythonRun: {
-	app:        #PythonApp
+#Run: {
+	app:        #App
 	source:     docker.#Image
 	workdir:    *"\(app.path)" | string
 	mounts:     [name=string]: core.#Mount
@@ -58,8 +59,8 @@ import (
 	}
 }
 
-#PythonMakeWheel: {
-	app:     #PythonApp
+#MakeWheel: {
+	app:     #App
 	source:  docker.#Image
     project: dagger.#FS
 
@@ -72,8 +73,8 @@ import (
 	}
 }
 
-#PythonCreateVirtualenv: {
-	app: #PythonApp
+#CreateVirtualenv: {
+	app: #App
 	source: docker.#Image
 
 	_build: docker.#Build & {
@@ -93,8 +94,8 @@ import (
 	output: _build.output
 }
 
-#PythonInstallPoetryRequirements: {
-	app: #PythonApp
+#InstallPoetryRequirements: {
+	app: #App
 	source:     docker.#Image
 	project:    dagger.#FS
 
@@ -111,10 +112,10 @@ import (
 			},
 			bash.#Run & {
 				mounts: projectMount: {
-					dest:     app._projectDir
+					dest:     app.projectDir
 					contents: project
 				}			
-				workdir: app._projectDir
+				workdir: app.projectDir
 				script: contents: """
 					set -e
 					mkdir -p \(app.buildPath)
@@ -124,9 +125,9 @@ import (
 			bash.#Run & {
 				script: contents: """
 					set -e
-					mkdir -p \(app._wheelsDir)
-					\(app.venvDir)/bin/pip wheel -w \(app._wheelsDir) -r \(_reqFile)
-					\(app.venvDir)/bin/pip install --no-index -f \(app._wheelsDir) -r \(_reqFile)
+					mkdir -p \(app.wheelsDir)
+					\(app.venvDir)/bin/pip wheel -w \(app.wheelsDir) -r \(_reqFile)
+					\(app.venvDir)/bin/pip install --no-index -f \(app.wheelsDir) -r \(_reqFile)
 				"""
 			},
 		]
@@ -156,8 +157,8 @@ import (
 	output: _build.output
 }
 
-// #PythonInstallRequirements: {
-// 	virtualenv: #PythonVirtualenv
+// #InstallRequirements: {
+// 	virtualenv: #Virtualenv
 // 	source:     dagger.#FS
 	
 // 	_reqFile: "\(virtualenv.path)/requirements.txt"

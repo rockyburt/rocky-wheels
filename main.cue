@@ -1,6 +1,7 @@
-package pythonsupport
+package pythonapp
 
 import (
+	"github.com/rockyburt/rocky-wheels/pythonext"
 	"dagger.io/dagger"
 	"dagger.io/dagger/core"
 	"universe.dagger.io/bash"
@@ -22,22 +23,22 @@ dagger.#Plan & {
 	_tagSuffix: "\(_project):\(_version)"
 	_tag: "\(_imageRepo)\(_tagSuffix)"
 
-	_app: #PythonApp & {
+	_app: pythonext.#App & {
 		path: "/\(_project)"
 		buildPath: "/build"
 	}
 
 	actions: {
-		_baseImage: #PythonImage & {}
+		_baseImage: pythonext.#Image & {}
 
 		// setup the baseImage with a Python virtualenv
-		_createVirtualenv: #PythonCreateVirtualenv & {
+		_createVirtualenv: pythonext.#CreateVirtualenv & {
 			app: _app
 			source: _baseImage.output
 		}
 
 		// install Poetry-derived requirements-based dependencies
-		_buildImage: #PythonInstallPoetryRequirements & {
+		_buildImage: pythonext.#InstallPoetryRequirements & {
 			app: _app
 			source: _createVirtualenv.output
 			project: _base.output
@@ -46,15 +47,15 @@ dagger.#Plan & {
 		buildWheel: bash.#Run & {
 			input: _buildImage.output
 			mounts: projectMount: {
-				dest:     _app._projectDir
+				dest:     _app.projectDir
 				contents: _base.output
 			}
-			workdir: "\(_app._projectDir)"
+			workdir: "\(_app.projectDir)"
 			script: contents: """
 				set -e
 				rm -Rf dist
 				poetry build
-				cp dist/*.whl \(_app._wheelsDir)/
+				cp dist/*.whl \(_app.wheelsDir)/
 				\(_app.venvDir)/bin/python -m pip install dist/*.whl
 			"""
 		}
@@ -63,7 +64,7 @@ dagger.#Plan & {
 			contents: dagger.#FS & _subdir.output
 			_subdir: core.#Subdir & {
 				input: buildWheel.output.rootfs
-				"path": _app.buildPath
+				"path": _app.path
 			}
 		}
 
