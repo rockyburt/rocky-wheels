@@ -5,7 +5,6 @@ import (
 	"dagger.io/dagger/core"
 	"universe.dagger.io/docker"
 	"universe.dagger.io/bash"
-	"path"
 )
 
 #Image: {
@@ -238,7 +237,6 @@ import (
 				input: _run.output.rootfs
 				"path": _bdistWheel.contents
 			}
-			bdistWheelName: path.Base(bdistWheel.path, path.Unix)
 			_bdistWheel: core.#ReadFile & {
 				input: _run.output.rootfs
 				"path": "/tmp/PY_BDIST_WHEEL"
