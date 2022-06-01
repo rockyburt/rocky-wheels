@@ -4,7 +4,6 @@ import (
 	"github.com/rockyburt/rocky-wheels/pythonext"
 	"dagger.io/dagger"
 	"dagger.io/dagger/core"
-	"universe.dagger.io/bash"
 	"universe.dagger.io/docker"
 	"universe.dagger.io/docker/cli"
 )
@@ -44,36 +43,14 @@ dagger.#Plan & {
 			project: _base.output
 		}
 
-		buildWheel: bash.#Run & {
-			input: _buildImage.output
-			mounts: projectMount: {
-				dest:     _app.projectDir
-				contents: _base.output
-			}
-			workdir: "\(_app.projectDir)"
-			script: contents: """
-				set -e
-				rm -Rf dist
-				poetry build
-				cp dist/*.whl \(_app.wheelsDir)/
-				\(_app.venvDir)/bin/python -m pip install dist/*.whl
-			"""
-		}
-
-		_appExport: {
-			contents: dagger.#FS & _subdir.output
-			_subdir: core.#Subdir & {
-				input: buildWheel.output.rootfs
-				"path": _app.path
-			}
+		installPackage: pythonext.#InstallPoetryPackage & {
+			app: _app
+			source: _buildImage.output
+			project: _base.output
 		}
 
 		exportBuildArtifacts: {
-			contents: dagger.#FS & _subdir.output
-			_subdir: core.#Subdir & {
-				input: buildWheel.output.rootfs
-				"path": _app.buildPath
-			}
+			contents: installPackage.export.build
 		}
 
 		// build final image
@@ -83,7 +60,7 @@ dagger.#Plan & {
 					source: _baseImage.baseImageTag
 				},
 				docker.#Copy & {
-					contents: _appExport.contents
+					contents: installPackage.export.app
 					dest: _app.path
 				},
 				docker.#Copy & {

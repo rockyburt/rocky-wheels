@@ -182,3 +182,47 @@ import (
 // 	output: _build.output
 // }
 
+#InstallPoetryPackage: {
+	app:     #App
+	source:  docker.#Image
+	project: dagger.#FS
+
+	output: _install.output
+
+	_install: bash.#Run & {
+		input: source
+		mounts: projectMount: {
+			dest:     app.projectDir
+			contents: project
+		}
+		workdir: app.projectDir
+		script: contents: """
+			set -e
+			rm -Rf dist
+			poetry build
+			cp dist/*.whl \(app.wheelsDir)/
+			\(app.venvDir)/bin/python -m pip install dist/*.whl
+		"""
+	}
+
+	_appExport: {
+		contents: dagger.#FS & _subdir.output
+		_subdir: core.#Subdir & {
+			input: _install.output.rootfs
+			"path": app.path
+		}
+	}
+
+	_buildExport: {
+		contents: dagger.#FS & _subdir.output
+		_subdir: core.#Subdir & {
+			input: _install.output.rootfs
+			"path": app.buildPath
+		}
+	}
+
+	export: {
+		build: _buildExport.contents
+		app:   _appExport.contents
+	}
+}
