@@ -31,8 +31,8 @@ import (
 	buildPath:   string
 
 	venvDir:     "\(path)/venv"
-	projectDir:  "\(path)/project"
 	wheelsDir:   "\(buildPath)/wheels"
+	srcDir:      "\(path)/src"
 	
 	_reqFile:    "\(buildPath)/requirements.txt"
 }
@@ -124,6 +124,7 @@ import (
 	app:      #AppConfig
 	source:   docker.#Image
 	project:  dagger.#FS
+	name:     string
 
 	_reqFile: "\(app.buildPath)/requirements.txt"
 	
@@ -138,10 +139,10 @@ import (
 			},
 			bash.#Run & {
 				mounts: projectMount: {
-					dest:     app.projectDir
+					dest:     workdir
 					contents: project
 				}			
-				workdir: app.projectDir
+				workdir: "\(app.srcDir)/\(name)"
 				script: contents: """
 					set -e
 					mkdir -p \(app.buildPath)
@@ -201,16 +202,17 @@ import (
 	app:     #AppConfig
 	source:  docker.#Image
 	project: dagger.#FS
+	name:     string
 
 	output: _run.output
 
 	_run: bash.#Run & {
 		input: source
 		mounts: projectMount: {
-			dest:     app.projectDir
+			dest:     workdir
 			contents: project
 		}
-		workdir: app.projectDir
+		workdir: "\(app.srcDir)/\(name)"
 		script: contents: """
 			set -e
 			rm -Rf dist
@@ -240,6 +242,14 @@ import (
 			_bdistWheel: core.#ReadFile & {
 				input: _run.output.rootfs
 				"path": "/tmp/PY_BDIST_WHEEL"
+			}
+			sdist: core.#ReadFile & {
+				input: _run.output.rootfs
+				"path": _sdist.contents
+			}
+			_sdist: core.#ReadFile & {
+				input: _run.output.rootfs
+				"path": "/tmp/PY_SDIST"
 			}
 		}
 	}

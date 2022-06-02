@@ -41,12 +41,14 @@ dagger.#Plan & {
 			app: _app
 			source: _createVirtualenv.output
 			project: _base.output
+			name: _project
 		}
 
 		_makePythonDist: pythonext.#BuildPoetrySourcePackage & {
 			app: _app
 			source: _buildImage.output
 			project: _base.output
+			name: _project
 		}
 
 		installWheel: pythonext.#InstallWheelFile & {
