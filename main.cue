@@ -10,6 +10,7 @@ import (
 
 dagger.#Plan & {
 	client: network: "unix:///var/run/docker.sock": connect: dagger.#Socket
+	client: network: "localhost:8000": connect: dagger.#Socket
 	client: filesystem: "./.build": write: contents: actions.exportBuildArtifacts.output
 	_base: core.#Source & {
 		path: "."
@@ -17,15 +18,18 @@ dagger.#Plan & {
 	}
 
 	actions: {
-		_version: 		sourceVersion.output.version
-		_imageRepo: 	""
-		_tagSuffix: 	"\(_project):\(_version)"
-		_tag: 			"\(_imageRepo)\(_tagSuffix)"
-		_project:		"rocky-wheels"
-		
+		_config: {
+			projectVersion:		sourceVersion.output.version
+			projectName:		sourceVersion.output.name
+
+			imageRepo: 			""
+			imageTagSuffix: 	"\(projectName):\(projectVersion)"
+			imageTag: 			"\(imageRepo)\(imageTagSuffix)"
+		}
+
 		_app: pythonext.#AppConfig & {
-			path: "/\(_project)"
-			buildPath: "/build"
+			path:		"/pythonapp"
+			buildPath:	"/build"
 		}
 
 		// setup the initial image for building
@@ -33,7 +37,7 @@ dagger.#Plan & {
 
 		// get python version of poetry source package
 		sourceVersion: pythonext.#GetPackageVersionByPoetry & {
-			source: installRequirements.output
+			source: startBuildImage.output
 			project: _base.output
 		}
 
@@ -48,7 +52,7 @@ dagger.#Plan & {
 			app: _app
 			source: createVirtualenv.output
 			project: _base.output
-			name: _project
+			name: _config.projectName
 		}
 
 		// build the source package as wheel/sdist
@@ -56,7 +60,7 @@ dagger.#Plan & {
 			app: _app
 			source: installRequirements.output
 			project: _base.output
-			name: _project
+			name: _config.projectName
 		}
 
 		// install the built wheel
@@ -102,18 +106,34 @@ dagger.#Plan & {
 			}
 		}
 
+		// run the dev app in development mode
+		runDevApp: docker.#Run & {
+			input: buildRunnableImage.output
+			always: true
+			env: {
+				"QUART_ENV": "development"
+			}
+			command: {
+				name: "\(_app.venvDir)/bin/python"
+				args: ["-m", "rockywheels.app"]
+			}
+			ports: webApp: {
+				frontend: client.network."localhost:5000"
+				backend: address: "localhost:5000"
+			}
+		}
+
 		// export the built image into the local docker runtime
 		loadIntoDocker: cli.#Load & {
-			// save to local docker environment as a debugging artifact
 			image: buildRunnableImage.output
 			host: client.network."unix:///var/run/docker.sock".connect
-			tag: _tag
+			tag: _config.imageTag
 		}
 
 		// publish the built image to a registry
 		publisToRegistry: docker.#Push & {
 			image: buildRunnableImage.output
-			dest:  "localhost:5042/\(_tag)"
+			dest:  "localhost:5042/\(_config.imageTag)"
 		}
 	}
 }

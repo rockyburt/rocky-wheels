@@ -84,7 +84,7 @@ import (
 				input: source
 				script: contents: """
 					set -e
-					python -m venv \(app.venvDir)
+					python -m venv --copies \(app.venvDir)
 					\(app.venvDir)/bin/pip install --upgrade pip
 					\(app.venvDir)/bin/pip install --upgrade wheel
 				"""
@@ -121,6 +121,19 @@ import (
 	}
 }
 
+#InstallSystemPoetry: {
+	input:		docker.#Image
+	output:		_run.output
+	
+	_run: docker.#Run & {
+		"input": input
+		command: {
+			name: "/usr/local/bin/pip"
+			args: ["install", "poetry"]
+		}
+	}
+}
+
 #InstallPoetryRequirements: {
 	app:      #AppConfig
 	source:   docker.#Image
@@ -128,22 +141,19 @@ import (
 	name:     string
 
 	_reqFile: "\(app.buildPath)/requirements.txt"
-	
+
+	_copyFiles: #CopyPoetryFiles & {
+		input:		source
+		"project": 	project
+	}
+
 	_run: docker.#Build & {
 		steps: [
-			docker.#Run & {
-				input: source
-				command: {
-					name: "/usr/local/bin/pip"
-					args: ["install", "poetry"]
-				}
+			#InstallSystemPoetry & {
+				input: _copyFiles.output
 			},
 			bash.#Run & {
-				mounts: projectMount: {
-					dest:     workdir
-					contents: project
-				}			
-				workdir: "\(app.srcDir)/\(name)"
+				workdir: _copyFiles.dest
 				script: contents: """
 					set -e
 					mkdir -p \(app.buildPath)
@@ -284,6 +294,21 @@ import (
 	}
 }
 
+#CopyPoetryFiles: {
+	input: 		docker.#Image
+	project: 	dagger.#FS
+	dest:		"/package"
+	output:		_run.output
+	
+	_run: docker.#Copy & {
+		"input": input
+		contents: project
+		include: ["poetry.lock", "pyproject.toml"]
+		"dest": dest
+	}
+
+}
+
 #GetPackageVersionByPoetry: {
 	source:		docker.#Image
 	project:	dagger.#FS
@@ -302,20 +327,24 @@ import (
 		"path":			"/tmp/PACKAGE_VERSION"
 	}
 
-	_run: bash.#Run & {
+	_install_poetry: #InstallSystemPoetry & {
 		input: source
-		workdir: "/package"
-		mounts: projectMount: {
-			dest:     workdir
-			contents: project
-		}
+	}
+
+	_copyFiles: #CopyPoetryFiles & {
+		input: _install_poetry.output
+		"project": project
+	}
+
+	_run: bash.#Run & {
+		input: _copyFiles.output
+		workdir: _copyFiles.dest
 		script: contents: """
 			echo -n `poetry version` > /tmp/full-version
 			cat /tmp/full-version | sed -e 's/\\([a-zA-Z0-9_-]\\+\\)\\(.*\\)/\\1/' > /tmp/PACKAGE_NAME
 			cat /tmp/full-version | sed -e 's/\\([a-zA-Z0-9_-]\\+\\) *\\(.*\\)/\\2/' > /tmp/PACKAGE_VERSION
 		"""
 	}
-	"image": _run.output
 }
 
 #InstallWheelFile: {
