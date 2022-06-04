@@ -2,7 +2,7 @@
 authors = ["Rocky Burt <rocky.burt@gmail.com>"]
 description = ""
 name = "rocky-wheels"
-packages = [{include = "pythonapp"}]
+packages = [{include = "rockywheels", from = "src"}]
 version = "0.1.0"
 
 [tool.poetry.dependencies]

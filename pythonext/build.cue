@@ -31,7 +31,8 @@ import (
 	buildPath:   string
 
 	venvDir:     "\(path)/venv"
-	wheelsDir:   "\(buildPath)/wheels"
+	depsDir:     "\(buildPath)/deps"
+	distDir:     "\(buildPath)/dist"
 	srcDir:      "\(path)/src"
 	
 	_reqFile:    "\(buildPath)/requirements.txt"
@@ -152,9 +153,9 @@ import (
 			bash.#Run & {
 				script: contents: """
 					set -e
-					mkdir -p \(app.wheelsDir)
-					\(app.venvDir)/bin/pip wheel -w \(app.wheelsDir) -r \(_reqFile)
-					\(app.venvDir)/bin/pip install --no-index -f \(app.wheelsDir) -r \(_reqFile)
+					mkdir -p \(app.depsDir)
+					\(app.venvDir)/bin/pip wheel -w \(app.depsDir) -r \(_reqFile)
+					\(app.venvDir)/bin/pip install --no-index -f \(app.depsDir) -r \(_reqFile)
 				"""
 			},
 		]
@@ -198,13 +199,60 @@ import (
 // 	output: _build.output
 // }
 
-#BuildPoetrySourcePackage: {
-	app:     #AppConfig
-	source:  docker.#Image
-	project: dagger.#FS
-	name:     string
+#FileRef: {
+	input:	dagger.#FS
+	source:	string
+	
+	_targetName: core.#ReadFile & {
+		"input":		input
+		"path":			source
+	}
 
-	output: _run.output
+	targetPath: 		_targetName.contents
+
+	target: core.#ReadFile & {
+		"input":		input
+		"path":			targetPath
+	}
+}
+
+#ListGlobSingle: {
+	glob:		string
+	input: 		docker.#Image
+
+	_loc: "/tmp/tmp-listglobsingle"
+
+	_run: bash.#Run & {
+		"input": input
+		script: contents: """
+			set -e
+			cd /
+			echo -n `ls \(glob)` > \(_loc)
+		"""
+	}
+
+	ref: #FileRef & {
+		"input":		_run.output.rootfs
+		"source":		_loc
+	}
+}
+
+#BuildPoetrySourcePackage: {
+	app:		#AppConfig
+	source:		docker.#Image
+	project:	dagger.#FS
+	name:		string
+
+	output:		_run.output
+
+	bdistWheel: #ListGlobSingle & {
+		glob: "\(app.distDir)/\(name)/*.whl"
+		input: _run.output
+	}
+	sdist: #ListGlobSingle & {
+		glob: "\(app.distDir)/\(name)/*.tar.gz"
+		input: _run.output
+	}
 
 	_run: bash.#Run & {
 		input: source
@@ -217,13 +265,8 @@ import (
 			set -e
 			rm -Rf dist
 			poetry build
-			cp dist/*.whl \(app.wheelsDir)/
-			mkdir -p /dist
-			cp dist/* /dist/
-			cd /
-			echo -n `ls /dist/*.whl` > /tmp/PY_BDIST_WHEEL
-			echo -n `ls /dist/*.tar.gz` > /tmp/PY_SDIST
-			# \(app.venvDir)/bin/python -m pip install dist/*.whl
+			mkdir -p \(app.distDir)/\(name)
+			cp dist/* \(app.distDir)/\(name)/
 		"""
 	}
 
@@ -235,22 +278,8 @@ import (
 		build: _artifacts.export.build
 		app:   _artifacts.export.app
 		dist: {
-			bdistWheel: core.#ReadFile & {
-				input: _run.output.rootfs
-				"path": _bdistWheel.contents
-			}
-			_bdistWheel: core.#ReadFile & {
-				input: _run.output.rootfs
-				"path": "/tmp/PY_BDIST_WHEEL"
-			}
-			sdist: core.#ReadFile & {
-				input: _run.output.rootfs
-				"path": _sdist.contents
-			}
-			_sdist: core.#ReadFile & {
-				input: _run.output.rootfs
-				"path": "/tmp/PY_SDIST"
-			}
+			"bdistWheel": bdistWheel.ref.target
+			"sdist":      sdist.ref.target
 		}
 	}
 }

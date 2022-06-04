@@ -16,7 +16,7 @@ dagger.#Plan & {
 		exclude: ["cue.mod", "README.md", "*.cue", ".build"]
 	}
 
-	_project: "pythonapp"
+	_project: "rocky-wheels"
 	_version: "1.0"
 	_imageRepo: ""
 	_tagSuffix: "\(_project):\(_version)"
@@ -31,37 +31,36 @@ dagger.#Plan & {
 		_baseImage: pythonext.#Image & {}
 
 		// setup the baseImage with a Python virtualenv
-		_createVirtualenv: pythonext.#CreateVirtualenv & {
+		createVirtualenv: pythonext.#CreateVirtualenv & {
 			app: _app
 			source: _baseImage.output
 		}
 
 		// install Poetry-derived requirements-based dependencies
-		_buildImage: pythonext.#InstallPoetryRequirements & {
+		installRequirements: pythonext.#InstallPoetryRequirements & {
 			app: _app
-			source: _createVirtualenv.output
+			source: createVirtualenv.output
 			project: _base.output
 			name: _project
 		}
 
-		_makePythonDist: pythonext.#BuildPoetrySourcePackage & {
+		buildSource: pythonext.#BuildPoetrySourcePackage & {
 			app: _app
-			source: _buildImage.output
+			source: installRequirements.output
 			project: _base.output
 			name: _project
 		}
 
-		installWheel: pythonext.#InstallWheelFile & {
+		installSource: pythonext.#InstallWheelFile & {
 			app: _app
-			source: _makePythonDist.output
-			wheel: _makePythonDist.export.dist.bdistWheel.path
+			source: buildSource.output
+			wheel: buildSource.export.dist.bdistWheel.path
 		}
 
 		// export the build artifacts
 		exportBuildArtifacts: core.#Nop & {
-			input: _makePythonDist.export.build
+			input: buildSource.export.build
 		}
-
 
 		// build final image
 		image: docker.#Build & {
@@ -70,7 +69,7 @@ dagger.#Plan & {
 					source: _baseImage.baseImageTag
 				},
 				docker.#Copy & {
-					contents: installWheel.export.app
+					contents: installSource.export.app
 					dest: _app.path
 				},
 				// docker.#Copy & {
@@ -78,7 +77,7 @@ dagger.#Plan & {
 				// 	dest: "\(_app.path)/src"
 				// },
 				docker.#Set & {
-                	config: cmd: ["\(_app.venvDir)/bin/python", "-m", "pythonapp.app"]
+                	config: cmd: ["\(_app.venvDir)/bin/python", "-m", "rockywheels.app"]
             	},				
 			]
 		}
