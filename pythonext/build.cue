@@ -284,6 +284,40 @@ import (
 	}
 }
 
+#GetPackageVersionByPoetry: {
+	source:		docker.#Image
+	project:	dagger.#FS
+
+	output: {
+		name: _outputName.contents
+		version: _outputVersion.contents
+	}
+
+	_outputName: core.#ReadFile & {
+		"input":		_run.output.rootfs
+		"path":			"/tmp/PACKAGE_NAME"
+	}
+	_outputVersion: core.#ReadFile & {
+		"input":		_run.output.rootfs
+		"path":			"/tmp/PACKAGE_VERSION"
+	}
+
+	_run: bash.#Run & {
+		input: source
+		workdir: "/package"
+		mounts: projectMount: {
+			dest:     workdir
+			contents: project
+		}
+		script: contents: """
+			echo -n `poetry version` > /tmp/full-version
+			cat /tmp/full-version | sed -e 's/\\([a-zA-Z0-9_-]\\+\\)\\(.*\\)/\\1/' > /tmp/PACKAGE_NAME
+			cat /tmp/full-version | sed -e 's/\\([a-zA-Z0-9_-]\\+\\) *\\(.*\\)/\\2/' > /tmp/PACKAGE_VERSION
+		"""
+	}
+	"image": _run.output
+}
+
 #InstallWheelFile: {
 	app:     #AppConfig
 	source:  docker.#Image

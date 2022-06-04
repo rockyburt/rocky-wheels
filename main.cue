@@ -13,27 +13,34 @@ dagger.#Plan & {
 	client: filesystem: "./.build": write: contents: actions.exportBuildArtifacts.output
 	_base: core.#Source & {
 		path: "."
-		exclude: ["cue.mod", "README.md", "*.cue", ".build"]
-	}
-
-	_project: "rocky-wheels"
-	_version: "1.0"
-	_imageRepo: ""
-	_tagSuffix: "\(_project):\(_version)"
-	_tag: "\(_imageRepo)\(_tagSuffix)"
-
-	_app: pythonext.#AppConfig & {
-		path: "/\(_project)"
-		buildPath: "/build"
+		exclude: ["cue.mod", "README.md", "*.cue", ".build", ".git", ".gitignore"]
 	}
 
 	actions: {
-		_baseImage: pythonext.#Image & {}
+		_version: 		sourceVersion.output.version
+		_imageRepo: 	""
+		_tagSuffix: 	"\(_project):\(_version)"
+		_tag: 			"\(_imageRepo)\(_tagSuffix)"
+		_project:		"rocky-wheels"
+		
+		_app: pythonext.#AppConfig & {
+			path: "/\(_project)"
+			buildPath: "/build"
+		}
+
+		// setup the initial image for building
+		startBuildImage: pythonext.#Image & {}
+
+		// get python version of poetry source package
+		sourceVersion: pythonext.#GetPackageVersionByPoetry & {
+			source: installRequirements.output
+			project: _base.output
+		}
 
 		// setup the baseImage with a Python virtualenv
 		createVirtualenv: pythonext.#CreateVirtualenv & {
 			app: _app
-			source: _baseImage.output
+			source: startBuildImage.output
 		}
 
 		// install Poetry-derived requirements-based dependencies
@@ -44,6 +51,7 @@ dagger.#Plan & {
 			name: _project
 		}
 
+		// build the source package as wheel/sdist
 		buildSource: pythonext.#BuildPoetrySourcePackage & {
 			app: _app
 			source: installRequirements.output
@@ -51,6 +59,7 @@ dagger.#Plan & {
 			name: _project
 		}
 
+		// install the built wheel
 		installSource: pythonext.#InstallWheelFile & {
 			app: _app
 			source: buildSource.output
@@ -62,37 +71,48 @@ dagger.#Plan & {
 			input: buildSource.export.build
 		}
 
-		// build final image
-		image: docker.#Build & {
+		// build destination runnable image
+		buildRunnableImage: docker.#Build & {
 			steps: [
 				docker.#Pull & {
-					source: _baseImage.baseImageTag
+					source: startBuildImage.baseImageTag
 				},
 				docker.#Copy & {
 					contents: installSource.export.app
 					dest: _app.path
 				},
-				// docker.#Copy & {
-				// 	contents: _base.output
-				// 	dest: "\(_app.path)/src"
-				// },
 				docker.#Set & {
                 	config: cmd: ["\(_app.venvDir)/bin/python", "-m", "rockywheels.app"]
             	},				
 			]
 		}
 
+		// run the python tests
+		runTests: docker.#Run & {
+			input: buildRunnableImage.output
+			always: true
+			workdir: "/test"
+			mounts: projectMount: {
+				dest:     workdir
+				contents: _base.output
+			}
+			command: {
+				name: "\(_app.venvDir)/bin/python"
+				args: ["-m", "unittest", "discover", "-s", "tests"]
+			}
+		}
+
 		// export the built image into the local docker runtime
-		load: cli.#Load & {
+		loadIntoDocker: cli.#Load & {
 			// save to local docker environment as a debugging artifact
-			"image": image.output
+			image: buildRunnableImage.output
 			host: client.network."unix:///var/run/docker.sock".connect
 			tag: _tag
 		}
 
 		// publish the built image to a registry
-		publish: docker.#Push & {
-			"image": image.output
+		publisToRegistry: docker.#Push & {
+			image: buildRunnableImage.output
 			dest:  "localhost:5042/\(_tag)"
 		}
 	}
